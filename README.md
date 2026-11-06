@@ -1,60 +1,75 @@
-Projeto ENADEc
-Pipeline de ingestão, mensagens, indexação e busca de questões do ENADE.
+# ENADE Avaliador
 
-Pilha
-Python 3.11, FastAPI, PyMuPDF, Pydantic
-Kafka (KRaft), Elasticsearch 8, Redis
-React + Vite
-Docker Compose
-OpenLDAP (base de autenticação) e MIT Kerberos (perfil de infraestrutura)
-Esta é uma base progressiva para desenvolvimento. LDAP e Kerberos são provisionados como serviços de laboratório, mas a autenticação Kerberos SASL/GSSAPI ponta a ponta exige emissão de principais/keytabs e configuração TLS/JAAS compatível com as imagens escolhidas. Não considere RF22/RF23 concluídos antes dos testes de tecnologia descritos abaixo.
+Pipeline de ingestão, indexação e busca de questões do ENADE, com perfis de acesso e cache.
 
-Subir sem Codespaces
-Crie um repositório GitHub vazio e abra-o em Codespaces.
-Copie os arquivos desta estrutura para a raiz.
-Executar:
+## Componentes
+
+- API: Python 3.11, FastAPI, Elasticsearch e Redis.
+- Ingestão: PyMuPDF extrai questões de PDFs e Kafka encaminha os registros para indexação.
+- Interface: React + Vite.
+- Identidade: OpenLDAP para perfis de estudante e professor.
+- Execução local: Docker Compose.
+
+## Executar localmente
+
+```bash
 cp .env.example .env
+# Altere os valores de desenvolvimento no arquivo .env antes de usar fora do computador local.
 docker compose up -d --build
-Acompanhe: docker compose pse docker compose logs -f api worker.
-API: http://localhost:8000/docs
-Frontend: http://localhost:5173
-Elasticsearch: http://localhost:9200
-OpenLDAP: localhost:389 (admin / senha definida no .env).
-Ingerir PDFs
-Coloque os PDFs em data/pdfs/e execute:
+```
 
-docker compose exec api python -m app.ingestion.cli --input /app/data/pdfs
-O produtor publica questões no tópico enade.questions; o índice de trabalho no Elasticsearch. PDFs não são desativados.
+- Interface: <http://localhost:5173>
+- Documentação da API: <http://localhost:8000/docs>
+- Saúde dos serviços: <http://localhost:8000/health>
 
-Pontos finais principais
-GET /health
-GET /questions?q=ética&area=...&course=...&year=...&kind=FG
-GET /questions/{id}
-GET /analytics/courses
-GET /analytics/competencies
-POST /cart/{session_id}eGET /cart/{session_id}
-POST /auth/login(LDAP)
-Organização
-app/ingestion: remoção, segmentação e produtor Kafka
-app/worker: consumidor Kafka, DLQ e Elasticsearch
-app/api: rotas, autenticação e cache
-frontend: interface React
-infra: configurações auxiliares
-Limitações deliberadas da primeira entrega
-A segmentação automática por heurística precisa ser validada em PDFs reais; o formato das provas varia.
-Fórmulas/imagens são preservadas como referência de página e sinalizadas para revisão. A conversão multimodal para LaTeX/Mermaid deve ser adicionada com avaliação humana; não há conversão fictícia.
-competenciese knowledge_objectssão metadados que precisam ser enriquecidos a partir das diretrizes/itens oficiais.
-Para produção, configure TLS, gerenciador de segredos, backup, replicação, ACLs Kafka/Elasticsearch e Kerberos SASL/GSSAPI real.
-A composição é de laboratório/desenvolvimento, não uma implantação de produção.
-Testes
-docker compose exec api pytest -q
-Decisões iniciais de topologia
-Para laboratório local: 1 corretora Kafka, 3 partições no tópico principal e 1 no DLQ; Elasticsearch com 1 shard primário e 0 réplicas; Redis autônomo. Em produção, aumente brokers/partições conforme vazão, shards conforme volume e réplicas conforme disponibilidade. Em nó único, as réplicas não aumentam a tolerância à falha.
+O Compose é uma configuração de laboratório/desenvolvimento. Não é uma implantação de produção. A URL pública de demonstração ainda não foi configurada.
 
-GitHub
-git init
-git add .
-git commit -m "feat: estrutura inicial do pipeline ENADE"
-git branch -M main
-git remote add origin https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git
-git push -u origin main
+## Fluxo de ingestão
+
+1. Coloque os PDFs em `data/pdfs/`.
+2. Execute:
+
+   ```bash
+   docker compose exec api python -m app.ingestion.cli --input /app/data/pdfs
+   ```
+
+3. O extrator registra texto, página de origem, alternativas identificadas e itens que precisam de revisão de mídia.
+4. O produtor envia os registros ao tópico `enade.questions`.
+5. O worker indexa os registros no Elasticsearch; falhas definitivas são encaminhadas à DLQ.
+
+Os PDFs de prova não são incluídos neste repositório. As questões extraídas devem ser revisadas antes de serem usadas para avaliação.
+
+## Busca, cache e perfis
+
+`GET /questions` faz busca textual em enunciados e alternativas. Pode-se filtrar mais de uma área com parâmetros repetidos:
+
+```text
+GET /questions?q=saúde&area=Saúde&area=Computação
+```
+
+Respostas de busca são armazenadas no Redis por 60 segundos. O perfil integra-se ao LDAP: professor pode ver gabaritos e análises; estudante não recebe gabarito e recebe `403` nas rotas de análise restritas. A interface permite informar uma ou várias áreas, curso e ano.
+
+`POST /auth/login` recebe `username` e `password` em JSON. A sessão usa token aleatório armazenado no Redis. Para login funcionar, o LDAP precisa conter os usuários e grupos correspondentes; este repositório não cria contas reais automaticamente.
+
+## Testes e relatório
+
+```bash
+python -m pytest -q
+```
+
+O relatório técnico em formato SBC, com método, resultados observados e limitações, está em [`reports/relatorio_sbc.pdf`](reports/relatorio_sbc.pdf); o fonte LaTeX e o estilo SBC utilizado acompanham o PDF.
+
+## Limitações conhecidas
+
+- A extração por heurísticas precisa ser comparada com uma amostra rotulada por pessoas; a contagem de candidatos não é uma medida de precisão.
+- Figuras, fórmulas e questões com mídia exigem revisão humana.
+- Kafka, Elasticsearch, Redis e LDAP precisam de validação de integração em execução; a configuração do Compose, sozinha, não comprova funcionamento ponta a ponta.
+- Não foi produzido benchmark de latência/vazão nem validado o limite de cinco minutos.
+- Kerberos está apenas provisionado como perfil de laboratório; autenticação SASL/GSSAPI, principals, keytabs e TLS não estão comprovados.
+- Configure TLS, segredos, backup, replicação e controles de acesso antes de qualquer uso de produção.
+
+Todas as mudanças devem ser propostas por pull request para `main`; não faça commits diretos nessa branch.
+
+## Projeto-fonte
+
+O código inicial da aplicação foi incorporado de [LopesLarissak/Projeto_enade_avaliador](https://github.com/LopesLarissak/Projeto_enade_avaliador).
