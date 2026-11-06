@@ -1,0 +1,95 @@
+\documentclass[12pt]{article}
+
+\usepackage{sbc-template}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\sloppy
+
+\title{ENADE Avaliador: integração do pipeline e validação inicial}
+\author{Equipe do Projeto ENADE Avaliador}
+\address{Relatório técnico de atividade\\Novembro de 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este relatório registra a integração do pipeline ENADE ao repositório de destino e os testes que puderam ser repetidos no ambiente disponível. A validação cobre testes unitários, configuração do Docker Compose e uma extração exploratória de um PDF de prova. Integração distribuída em execução, desempenho, implantação pública e qualidade acadêmica da extração não foram comprovados; por isso, não são atribuídas notas nem alegações de precisão.
+\end{abstract}
+
+\begin{resumo}
+Este relatório documenta a integração do pipeline ENADE e suas evidências verificáveis. Dez testes unitários passaram, a configuração do Compose foi validada e uma extração exploratória produziu 49 registros candidatos em 40 páginas. Kafka, Elasticsearch, Redis e LDAP não foram executados de ponta a ponta; não houve benchmark de cinco minutos nem publicação de demonstração. Não são atribuídas notas ou medidas de precisão sem evidência correspondente.
+\end{resumo}
+
+\section{Contexto e escopo}
+
+A atividade solicitada foi levar a implementação existente para o repositório público ENADE Avaliador, manter as mudanças em uma branch revisável e documentar somente resultados sustentados por evidência. O projeto-fonte é \url{https://github.com/LopesLarissak/Projeto_enade_avaliador}; o destino é \url{https://github.com/LopesLarissak/Enade-avaliador}. O PDF de prova de 6,9 MB presente no repositório-fonte não foi copiado; o diretório de entrada permanece preparado para documentos fornecidos localmente.
+
+O snapshot de código-fonte avaliado foi o commit \texttt{bcf4a33}; a branch-base de destino estava no commit \texttt{5e4f3d0}.
+
+O escopo integrado inclui API FastAPI, extração de PDFs com PyMuPDF, produtor Kafka, worker de indexação no Elasticsearch, cache e sessões em Redis, autenticação LDAP, interface React/Vite, Docker Compose e testes. Também foram corrigidos os nomes dos arquivos de dependências e ambiente de exemplo, restringido o CORS por configuração, trocado o token determinístico por token de sessão aleatório e adicionada busca com filtro simultâneo por múltiplas áreas.
+
+\section{Fluxo e recursos implementados}
+
+O fluxo de código é: PDF $\rightarrow$ extração e segmentação heurística $\rightarrow$ tópico \texttt{enade.questions} no Kafka $\rightarrow$ worker com retries e fila de mensagens mortas $\rightarrow$ índice Elasticsearch $\rightarrow$ API e interface web. Redis atende cache de busca por 60 segundos e sessão autenticada. O filtro textual consulta enunciados e alternativas; filtros repetidos de área permitem combinar áreas. A autenticação consulta o LDAP; a API distingue estudante e professor, omite gabarito para estudantes e restringe análises a professores.
+
+Essas descrições correspondem ao código e aos testes unitários. Elas não significam que os serviços externos tenham sido inicializados ou que o sistema tenha sido validado sob carga.
+
+\section{Método de validação}
+
+Os testes unitários foram executados com Python 3.11.14 e as dependências declaradas pelo projeto. Eles cobrem autenticação LDAP simulada, escape do filtro de usuário, identidade determinística de registros, token de sessão aleatório, cache, filtragem por múltiplas áreas e autorização por perfil.
+
+A configuração do Compose foi verificada com \texttt{docker compose config --quiet} após criar um arquivo local \texttt{.env} a partir do exemplo. A extração exploratória foi executada diretamente sobre o PDF de exemplo no projeto-fonte; nenhum gabarito rotulado foi usado para medir correção.
+
+\section{Resultados observados}
+
+\begin{table}[ht]
+\centering
+\caption{Evidências verificadas nesta atividade}
+\label{tab:evidencias}
+\small
+\begin{tabular}{|p{0.28\textwidth}|p{0.62\textwidth}|}
+\hline
+\textbf{Verificação} & \textbf{Resultado e limite} \\
+\hline
+Testes unitários & 10 passaram; três avisos de depreciação foram emitidos por dependências. Não são testes de integração distribuída. \\
+\hline
+Build da interface & \texttt{npm run build} concluiu com Vite; isso não substitui teste no navegador conectado aos serviços. \\
+\hline
+Configuração Compose & \texttt{docker compose config --quiet} validou a configuração e as variáveis de exemplo. Isso não inicia contêineres. \\
+\hline
+Extração exploratória & O PDF de 2021 tem 40 páginas; o extrator gerou 49 registros candidatos, 14 com alternativas e 5 marcados para revisão de mídia. Os números não medem precisão ou cobertura. \\
+\hline
+Integração em execução & Não executada: o ambiente não dispõe de daemon Docker. Kafka, Elasticsearch, Redis e LDAP não tiveram teste ponta a ponta. \\
+\hline
+Desempenho & Não medido. Não há latência p95/p99, vazão ou comprovação do limite de cinco minutos. \\
+\hline
+Demonstração publicada & Não há URL de aplicação hospedada neste PR. Os links disponíveis são dos repositórios GitHub, não uma demonstração funcional. \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Limitações e trabalho pendente}
+
+A segmentação é heurística e pode variar conforme o formato das provas. Figuras, fórmulas e questões com mídia exigem revisão humana; as competências e os objetos de conhecimento também dependem de metadados oficiais. O LDAP não recebe contas de demonstração, e a integração Kerberos SASL/GSSAPI, principals, keytabs e TLS não foi validada. A configuração local desativa a segurança do Elasticsearch e não deve ser tratada como implantação de produção.
+
+Para completar a avaliação são necessários: iniciar os serviços em um ambiente com Docker; executar testes de integração Kafka/Elasticsearch/Redis/LDAP; preparar um conjunto de questões revisado por avaliadores; medir latência e vazão sob carga dentro do intervalo solicitado; e publicar a aplicação em um ambiente acessível. Sem esses passos, pontuação, precisão, resiliência e disponibilidade não podem ser afirmadas.
+
+\section{Conclusão}
+
+A integração de código e os testes unitários estão preparados para revisão por pull request. A evidência disponível sustenta a execução dos dez testes, a validade sintática do Compose e a geração exploratória de registros a partir de um PDF. Ela não sustenta uma nota, um resultado de desempenho em cinco minutos, uma validação de serviços distribuídos ou uma demonstração hospedada. Nenhuma pontuação foi atribuída.
+
+\begin{thebibliography}{9}
+\bibitem{source}
+LOPESLARISSAK. \textit{Projeto ENADE avaliador}. Repositório de código-fonte. Disponível em: \url{https://github.com/LopesLarissak/Projeto_enade_avaliador}. Acesso em: 6 nov. 2026.
+
+\bibitem{target}
+LOPESLARISSAK. \textit{ENADE Avaliador}. Repositório de destino. Disponível em: \url{https://github.com/LopesLarissak/Enade-avaliador}. Acesso em: 6 nov. 2026.
+
+\bibitem{sbc}
+SOCIEDADE BRASILEIRA DE COMPUTAÇÃO. \textit{SBC Conferences Template - updated sbc-template.sty v2017}. Disponível em: \url{https://www.overleaf.com/latex/templates/sbc-conferences-template/blbxwjwzdngr}. Licença indicada pelo template: CC BY 4.0. Acesso em: 6 nov. 2026.
+\end{thebibliography}
+
+\end{document}
